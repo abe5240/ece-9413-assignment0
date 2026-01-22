@@ -49,6 +49,7 @@ This installs CPU JAX. For GPU, see https://docs.jax.dev/en/latest/installation.
 
 ```bash
 uv run pytest
+uv run pytest --logn 10 --batch 4
 ```
 
 ---
@@ -57,13 +58,16 @@ uv run pytest
 
 ```bash
 uv run python -m tests.benchmark
+uv run python -m tests.benchmark --tests --logn 10 --batch 4
+uv run python -m tests.benchmark --bench --logn 12 --batch 4
 ```
+
+With no flags, it runs both tests and the benchmark.
 
 Options:
 ```bash
-uv run python -m tests.benchmark --no-correctness   # skip tests, just benchmark
-uv run python -m tests.benchmark --no-latency       # just run tests
-uv run python -m tests.benchmark --min-logn 10 --max-logn 18
+uv run python -m tests.benchmark --tests            # only run tests
+uv run python -m tests.benchmark --bench            # only run benchmark
 ```
 
 ---
