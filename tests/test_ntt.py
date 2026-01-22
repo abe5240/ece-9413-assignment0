@@ -19,8 +19,9 @@ import pytest
 
 import provided
 import student
-from tests.config import DEFAULT_SEED
 from tests.reference import negacyclic_ntt_oracle
+
+DEFAULT_SEED = 42
 
 
 # -----------------------------------------------------------------------------

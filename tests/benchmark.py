@@ -23,14 +23,17 @@ from rich.table import Table
 
 import provided
 import student
-from tests.config import (
-    DEFAULT_BATCH,
-    DEFAULT_BIT_LENGTH,
-    DEFAULT_LOGN,
-    DEFAULT_RUNS,
-    DEFAULT_SEED,
-    DEFAULT_WARMUP,
-)
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+DEFAULT_LOGN = 10
+DEFAULT_BATCH = 4
+DEFAULT_RUNS = 20
+DEFAULT_WARMUP = 5
+DEFAULT_BIT_LENGTH = 31
+DEFAULT_SEED = 42
 
 
 # -----------------------------------------------------------------------------

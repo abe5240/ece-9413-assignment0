@@ -2,7 +2,8 @@
 
 import pytest
 
-from tests.config import DEFAULT_BATCH, DEFAULT_LOGN
+DEFAULT_LOGN = 10
+DEFAULT_BATCH = 4
 
 
 def pytest_addoption(parser):
@@ -31,4 +32,3 @@ def logn(request):
 def batch(request):
     """Return batch size for tests."""
     return request.config.getoption("--batch")
-
