@@ -7,8 +7,7 @@ Covers:
 - Linearity in the ring
 
 Usage:
-    pytest test_ntt.py          # Full mode (default)
-    pytest test_ntt.py --fast   # Fast mode (subset of sizes)
+    pytest tests/test_ntt.py --logn 10 --batch 4
 """
 
 from __future__ import annotations
@@ -20,33 +19,8 @@ import pytest
 
 import provided
 import student
+from tests.config import DEFAULT_SEED
 from tests.reference import negacyclic_ntt_oracle
-
-
-# -----------------------------------------------------------------------------
-# Test Configuration
-# -----------------------------------------------------------------------------
-
-FAST_LOG_SIZES = (4, 8, 10)
-FULL_LOG_SIZES = (1, 2, 3, 4, 5, 8, 10, 13, 15, 17, 20)
-
-FAST_BATCHES = (1, 4)
-FULL_BATCHES = (1, 4, 16, 256)
-
-SEED = 42
-
-
-def pytest_generate_tests(metafunc):
-    """Inject log_sizes and batches based on --fast flag."""
-    fast = metafunc.config.getoption("--fast")
-
-    if "logn" in metafunc.fixturenames:
-        sizes = FAST_LOG_SIZES if fast else FULL_LOG_SIZES
-        metafunc.parametrize("logn", sizes)
-
-    if "batch" in metafunc.fixturenames:
-        batches = FAST_BATCHES if fast else FULL_BATCHES
-        metafunc.parametrize("batch", batches)
 
 
 # -----------------------------------------------------------------------------
@@ -54,37 +28,17 @@ def pytest_generate_tests(metafunc):
 # -----------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def ntt_params(request):
-    """Generate shared (q, psi_max, N_max) for all tests."""
-    fast = request.config.getoption("--fast")
-    max_logn = max(FAST_LOG_SIZES if fast else FULL_LOG_SIZES)
-
-    N_max = 1 << max_logn
-    q = provided.generate_ntt_modulus(N_max, bit_length=31)
-    psi_max = provided.negacyclic_psi(N_max, q)
-    return q, psi_max, N_max
+def ntt_params(logn):
+    """Generate shared (N, q, psi) for all tests."""
+    N = 1 << logn
+    q = provided.generate_ntt_modulus(N, bit_length=31)
+    psi = provided.negacyclic_psi(N, q)
+    return N, q, psi
 
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
-
-def params_for_size(logn, ntt_params):
-    """
-    Extract NTT parameters for a specific log2 size.
-
-    Args:
-        logn: Log2 of transform size
-        ntt_params: Tuple of (q, psi_max, N_max)
-
-    Returns:
-        tuple: (N, q, psi) for the requested size
-    """
-    q, psi_max, N_max = ntt_params
-    N = 1 << logn
-    psi = provided.negacyclic_psi_from_max(psi_max, N_max, N, q)
-    return N, q, psi
-
 
 def random_input(rng, q, shape):
     """
@@ -127,11 +81,11 @@ def reference_ntt(x_np, q, psi):
 # Correctness Tests
 # -----------------------------------------------------------------------------
 
-def test_matches_reference(logn, batch, ntt_params):
+def test_matches_reference(batch, ntt_params):
     """NTT output matches SymPy reference across sizes and batch shapes."""
-    N, q, psi = params_for_size(logn, ntt_params)
+    N, q, psi = ntt_params
 
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(DEFAULT_SEED)
     x = random_input(rng, q, shape=(batch, N))
     y = student.ntt(x, q=q, psi=psi)
 
@@ -146,12 +100,12 @@ def test_matches_reference(logn, batch, ntt_params):
 # JAX Compatibility Tests
 # -----------------------------------------------------------------------------
 
-def test_jit_matches_eager(logn, ntt_params):
+def test_jit_matches_eager(batch, ntt_params):
     """JIT-compiled NTT matches eager execution."""
-    N, q, psi = params_for_size(logn, ntt_params)
+    N, q, psi = ntt_params
 
-    rng = np.random.default_rng(SEED)
-    x = random_input(rng, q, shape=(1, N))
+    rng = np.random.default_rng(DEFAULT_SEED)
+    x = random_input(rng, q, shape=(batch, N))
 
     y_eager = student.ntt(x, q=q, psi=psi)
     y_jit = jax.jit(lambda z: student.ntt(z, q=q, psi=psi))(x)
@@ -160,11 +114,11 @@ def test_jit_matches_eager(logn, ntt_params):
     np.testing.assert_array_equal(to_int64(y_eager), to_int64(y_jit))
 
 
-def test_vmap_matches_direct(logn, batch, ntt_params):
+def test_vmap_matches_direct(batch, ntt_params):
     """vmap over batch dimension matches direct batched call."""
-    N, q, psi = params_for_size(logn, ntt_params)
+    N, q, psi = ntt_params
 
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(DEFAULT_SEED)
     x = random_input(rng, q, shape=(batch, N))
 
     y_direct = student.ntt(x, q=q, psi=psi)
@@ -179,11 +133,11 @@ def test_vmap_matches_direct(logn, batch, ntt_params):
 # Algebraic Property Tests
 # -----------------------------------------------------------------------------
 
-def test_linearity(logn, ntt_params):
+def test_linearity(ntt_params):
     """NTT is linear: NTT(a + b) ≡ NTT(a) + NTT(b) (mod q)."""
-    N, q, psi = params_for_size(logn, ntt_params)
+    N, q, psi = ntt_params
 
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(DEFAULT_SEED)
     a = random_input(rng, q, shape=(N,))
     b = random_input(rng, q, shape=(N,))
 

@@ -3,8 +3,9 @@ Benchmark runner for NTT latency measurement.
 
 Usage:
     uv run python -m tests.benchmark
-    uv run python -m tests.benchmark --no-latency
-    uv run python -m tests.benchmark --no-correctness
+    uv run python -m tests.benchmark --tests
+    uv run python -m tests.benchmark --bench
+    uv run python -m tests.benchmark --logn 12 --batch 4
 """
 
 from __future__ import annotations
@@ -22,19 +23,14 @@ from rich.table import Table
 
 import provided
 import student
-
-
-# -----------------------------------------------------------------------------
-# Configuration
-# -----------------------------------------------------------------------------
-
-DEFAULT_MIN_LOGN = 10
-DEFAULT_MAX_LOGN = 18
-DEFAULT_BATCH = 1
-DEFAULT_RUNS = 20
-DEFAULT_WARMUP = 5
-DEFAULT_BIT_LENGTH = 31
-DEFAULT_SEED = 42
+from tests.config import (
+    DEFAULT_BATCH,
+    DEFAULT_BIT_LENGTH,
+    DEFAULT_LOGN,
+    DEFAULT_RUNS,
+    DEFAULT_SEED,
+    DEFAULT_WARMUP,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -123,35 +119,39 @@ def bench_single(N, batch, q, psi, runs, warmup, rng):
 # Runners
 # -----------------------------------------------------------------------------
 
-def run_correctness():
+def run_correctness(logn, batch):
     """Run pytest test suite."""
-    subprocess.run(["uv", "run", "pytest"], check=True)
+    cmd = [
+        "uv",
+        "run",
+        "pytest",
+        "--logn",
+        str(logn),
+        "--batch",
+        str(batch),
+    ]
+    subprocess.run(cmd, check=True)
 
 
-def run_latency(args):
+def run_latency(logn, batch):
     """
     Run latency benchmarks and print results table.
 
     Args:
-        args: Parsed command-line arguments
+        logn: log2(N) for the benchmark
+        batch: Batch size for the benchmark
     """
     console = Console()
 
-    if args.min_logn > args.max_logn:
-        raise ValueError(
-            f"min_logn ({args.min_logn}) must be <= max_logn ({args.max_logn})"
-        )
+    if logn <= 0:
+        raise ValueError(f"logn must be positive, got {logn}")
+    if batch <= 0:
+        raise ValueError(f"batch must be positive, got {batch}")
 
-    N_max = 1 << args.max_logn
-    if args.q is None:
-        q = provided.generate_ntt_modulus(
-            N_max,
-            bit_length=args.bit_length,
-        )
-    else:
-        q = args.q
-    psi_max = provided.negacyclic_psi(N_max, q)
-    rng = np.random.default_rng(args.seed)
+    N = 1 << logn
+    q = provided.generate_ntt_modulus(N, bit_length=DEFAULT_BIT_LENGTH)
+    psi = provided.negacyclic_psi(N, q)
+    rng = np.random.default_rng(DEFAULT_SEED)
 
     table = Table(title="Negacyclic NTT Latency")
     table.add_column("log₂(N)", justify="right")
@@ -161,30 +161,26 @@ def run_latency(args):
     table.add_column("p90 (ms)", justify="right")
     table.add_column("Mcoeff/s", justify="right")
 
-    for logn in range(args.min_logn, args.max_logn + 1):
-        N = 1 << logn
-        psi = provided.negacyclic_psi_from_max(psi_max, N_max, N, q)
+    stats = bench_single(
+        N=N,
+        batch=batch,
+        q=q,
+        psi=psi,
+        runs=DEFAULT_RUNS,
+        warmup=DEFAULT_WARMUP,
+        rng=rng,
+    )
 
-        stats = bench_single(
-            N=N,
-            batch=args.batch,
-            q=q,
-            psi=psi,
-            runs=args.runs,
-            warmup=args.warmup,
-            rng=rng,
-        )
+    throughput = (batch * N) / stats.median_s / 1e6
 
-        throughput = (args.batch * N) / stats.median_s / 1e6
-
-        table.add_row(
-            str(logn),
-            str(N),
-            f"{stats.compile_s * 1e3:.2f}",
-            f"{stats.median_s * 1e3:.3f}",
-            f"{stats.p90_s * 1e3:.3f}",
-            f"{throughput:.2f}",
-        )
+    table.add_row(
+        str(logn),
+        str(N),
+        f"{stats.compile_s * 1e3:.2f}",
+        f"{stats.median_s * 1e3:.3f}",
+        f"{stats.p90_s * 1e3:.3f}",
+        f"{throughput:.2f}",
+    )
 
     console.print(table)
 
@@ -200,70 +196,26 @@ def build_parser():
     )
 
     p.add_argument(
-        "--correctness",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run pytest suite (default: yes)",
+        "--tests",
+        action="store_true",
+        help="Run pytest suite",
     )
     p.add_argument(
-        "--latency",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run latency benchmarks (default: yes)",
+        "--bench",
+        action="store_true",
+        help="Run latency benchmark",
     )
     p.add_argument(
-        "--q",
+        "--logn",
         type=int,
-        default=None,
-        help="Prime modulus (auto-generated if omitted)",
-    )
-    p.add_argument(
-        "--bit-length",
-        type=int,
-        default=DEFAULT_BIT_LENGTH,
-        help=(
-            "Bit-length for auto-generated q "
-            f"(default: {DEFAULT_BIT_LENGTH})"
-        ),
+        default=DEFAULT_LOGN,
+        help=f"log2(N) (default: {DEFAULT_LOGN})",
     )
     p.add_argument(
         "--batch",
         type=int,
         default=DEFAULT_BATCH,
         help=f"Batch size (default: {DEFAULT_BATCH})",
-    )
-    p.add_argument(
-        "--min-logn",
-        type=int,
-        default=DEFAULT_MIN_LOGN,
-        help=f"Smallest log2(N) (default: {DEFAULT_MIN_LOGN})",
-    )
-    p.add_argument(
-        "--max-logn",
-        type=int,
-        default=DEFAULT_MAX_LOGN,
-        help=f"Largest log2(N) (default: {DEFAULT_MAX_LOGN})",
-    )
-    p.add_argument(
-        "--runs",
-        type=int,
-        default=DEFAULT_RUNS,
-        help=f"Timed iterations per size (default: {DEFAULT_RUNS})",
-    )
-    p.add_argument(
-        "--warmup",
-        type=int,
-        default=DEFAULT_WARMUP,
-        help=(
-            "Warmup iterations including compile "
-            f"(default: {DEFAULT_WARMUP})"
-        ),
-    )
-    p.add_argument(
-        "--seed",
-        type=int,
-        default=DEFAULT_SEED,
-        help=f"RNG seed (default: {DEFAULT_SEED})",
     )
 
     return p
@@ -273,10 +225,16 @@ def main():
     """Entry point for benchmark CLI."""
     args = build_parser().parse_args()
 
-    if args.correctness:
-        run_correctness()
-    if args.latency:
-        run_latency(args)
+    run_tests = args.tests
+    run_bench = args.bench
+    if not run_tests and not run_bench:
+        run_tests = True
+        run_bench = True
+
+    if run_tests:
+        run_correctness(args.logn, args.batch)
+    if run_bench:
+        run_latency(args.logn, args.batch)
 
 
 if __name__ == "__main__":

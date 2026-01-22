@@ -1,0 +1,8 @@
+"""Shared defaults for tests and benchmarks."""
+
+DEFAULT_LOGN = 10
+DEFAULT_BATCH = 4
+DEFAULT_RUNS = 20
+DEFAULT_WARMUP = 5
+DEFAULT_BIT_LENGTH = 31
+DEFAULT_SEED = 42
