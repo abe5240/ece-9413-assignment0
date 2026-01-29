@@ -1,6 +1,10 @@
 """Pytest configuration and custom CLI options."""
 
+import os
+
 import pytest
+
+os.environ.pop("LD_LIBRARY_PATH", None)
 
 DEFAULT_LOGN = 10
 DEFAULT_BATCH = 4

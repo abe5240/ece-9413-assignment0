@@ -11,9 +11,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import time
 from dataclasses import dataclass
+
+os.environ.pop("LD_LIBRARY_PATH", None)
 
 import jax
 import jax.numpy as jnp
@@ -94,7 +97,21 @@ def bench_single(N, batch, q, psi, runs, warmup, rng):
     x_np = rng.integers(0, q, size=(batch, N), dtype=np.int64)
     x = jnp.asarray(x_np, dtype=jnp.uint32)
 
-    fn = jax.jit(lambda z: student.ntt(z, q=q, psi=psi))
+    psi_powers, twiddles = provided.precompute_tables(N, q, psi)
+    psi_powers = jnp.asarray(psi_powers, dtype=jnp.uint32)
+    twiddles = jnp.asarray(twiddles, dtype=jnp.uint32)
+
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
+
+    fn = jax.jit(
+        lambda z: student.ntt(
+            z, q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
+    )
 
     # First call triggers JIT compilation
     t0 = time.perf_counter()
@@ -155,6 +172,9 @@ def run_latency(logn, batch):
     q = provided.generate_ntt_modulus(N, bit_length=DEFAULT_BIT_LENGTH)
     psi = provided.negacyclic_psi(N, q)
     rng = np.random.default_rng(DEFAULT_SEED)
+
+    device = jax.devices()[0]
+    console.print(f"Device: {device.platform} ({device.device_kind})")
 
     table = Table(title="Negacyclic NTT Latency")
     table.add_column("log₂(N)", justify="right")

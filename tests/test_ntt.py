@@ -30,11 +30,14 @@ DEFAULT_SEED = 42
 
 @pytest.fixture(scope="session")
 def ntt_params(logn):
-    """Generate shared (N, q, psi) for all tests."""
+    """Generate shared (N, q, psi, psi_powers, twiddles) for all tests."""
     N = 1 << logn
     q = provided.generate_ntt_modulus(N, bit_length=31)
     psi = provided.negacyclic_psi(N, q)
-    return N, q, psi
+    psi_powers, twiddles = provided.precompute_tables(N, q, psi)
+    psi_powers = jnp.asarray(psi_powers, dtype=jnp.uint32)
+    twiddles = jnp.asarray(twiddles, dtype=jnp.uint32)
+    return N, q, psi, psi_powers, twiddles
 
 
 # -----------------------------------------------------------------------------
@@ -84,11 +87,16 @@ def reference_ntt(x_np, q, psi):
 
 def test_matches_reference(batch, ntt_params):
     """NTT output matches SymPy reference across sizes and batch shapes."""
-    N, q, psi = ntt_params
+    N, q, psi, psi_powers, twiddles = ntt_params
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
 
     rng = np.random.default_rng(DEFAULT_SEED)
     x = random_input(rng, q, shape=(batch, N))
-    y = student.ntt(x, q=q, psi=psi)
+    y = student.ntt(x, q=q, psi_powers=psi_powers, twiddles=twiddles)
 
     assert y.shape == x.shape
 
@@ -103,13 +111,20 @@ def test_matches_reference(batch, ntt_params):
 
 def test_jit_matches_eager(batch, ntt_params):
     """JIT-compiled NTT matches eager execution."""
-    N, q, psi = ntt_params
+    N, q, _, psi_powers, twiddles = ntt_params
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
 
     rng = np.random.default_rng(DEFAULT_SEED)
     x = random_input(rng, q, shape=(batch, N))
 
-    y_eager = student.ntt(x, q=q, psi=psi)
-    y_jit = jax.jit(lambda z: student.ntt(z, q=q, psi=psi))(x)
+    y_eager = student.ntt(x, q=q, psi_powers=psi_powers, twiddles=twiddles)
+    y_jit = jax.jit(
+        lambda z: student.ntt(z, q=q, psi_powers=psi_powers, twiddles=twiddles)
+    )(x)
     jax.block_until_ready(y_jit)
 
     np.testing.assert_array_equal(to_int64(y_eager), to_int64(y_jit))
@@ -117,13 +132,22 @@ def test_jit_matches_eager(batch, ntt_params):
 
 def test_vmap_matches_direct(batch, ntt_params):
     """vmap over batch dimension matches direct batched call."""
-    N, q, psi = ntt_params
+    N, q, _, psi_powers, twiddles = ntt_params
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
 
     rng = np.random.default_rng(DEFAULT_SEED)
     x = random_input(rng, q, shape=(batch, N))
 
-    y_direct = student.ntt(x, q=q, psi=psi)
-    y_vmapped = jax.vmap(lambda row: student.ntt(row, q=q, psi=psi))(x)
+    y_direct = student.ntt(x, q=q, psi_powers=psi_powers, twiddles=twiddles)
+    y_vmapped = jax.vmap(
+        lambda row: student.ntt(
+            row[None, :], q=q, psi_powers=psi_powers, twiddles=twiddles
+        )[0]
+    )(x)
     jax.block_until_ready(y_vmapped)
 
     assert y_vmapped.shape == y_direct.shape
@@ -136,13 +160,42 @@ def test_vmap_matches_direct(batch, ntt_params):
 
 def test_linearity(ntt_params):
     """NTT is linear: NTT(a + b) ≡ NTT(a) + NTT(b) (mod q)."""
-    N, q, psi = ntt_params
+    N, q, _, psi_powers, twiddles = ntt_params
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
 
     rng = np.random.default_rng(DEFAULT_SEED)
-    a = random_input(rng, q, shape=(N,))
-    b = random_input(rng, q, shape=(N,))
+    a = random_input(rng, q, shape=(1, N))
+    b = random_input(rng, q, shape=(1, N))
 
-    left = student.ntt((a + b) % q, q=q, psi=psi)
-    right = (student.ntt(a, q=q, psi=psi) + student.ntt(b, q=q, psi=psi)) % q
+    left = student.ntt(
+        (a + b) % q, q=q, psi_powers=psi_powers, twiddles=twiddles
+    )
+    right = (
+        student.ntt(a, q=q, psi_powers=psi_powers, twiddles=twiddles)
+        + student.ntt(b, q=q, psi_powers=psi_powers, twiddles=twiddles)
+    ) % q
 
     np.testing.assert_array_equal(to_int64(left), to_int64(right))
+
+
+def test_output_range_and_dtype(batch, ntt_params):
+    """NTT outputs are uint32 in [0, q)."""
+    N, q, _, psi_powers, twiddles = ntt_params
+    prepare = getattr(student, "prepare_tables", None)
+    if prepare is not None:
+        psi_powers, twiddles = prepare(
+            q=q, psi_powers=psi_powers, twiddles=twiddles
+        )
+
+    rng = np.random.default_rng(DEFAULT_SEED)
+    x = random_input(rng, q, shape=(batch, N))
+    y = student.ntt(x, q=q, psi_powers=psi_powers, twiddles=twiddles)
+
+    assert y.dtype == jnp.uint32
+    y64 = to_int64(y)
+    assert y64.min() >= 0
+    assert y64.max() < q

@@ -25,6 +25,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
+import numpy as np
 from sympy import isprime
 
 
@@ -79,6 +80,57 @@ def broadcast_to_axis(arr, like, axis: int = 0) -> jnp.ndarray:
     shape[axis] = arr.shape[0]
     return arr.reshape(shape)
 
+
+
+# ---------------------------------------------------------------------------
+# Precomputation
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=None)
+def precompute_tables(N, q, psi):
+    """
+    Precompute power tables for negacyclic NTT.
+
+    Args:
+        N: Transform size (must be power of two)
+        q: Prime modulus
+        psi: Primitive 2N-th root of unity
+
+    Returns:
+        tuple: (psi_powers, twiddles) as uint32 arrays
+
+    Where:
+        psi_powers[n] = ψ^n mod q (for negacyclic twist)
+        twiddles[span:2*span] = stage twiddles for Stockham NTT
+    """
+    if N <= 0 or N & (N - 1) != 0:
+        raise ValueError(f"N must be a positive power of two, got {N}")
+
+    q, psi = int(q), int(psi)
+    omega = pow(psi, 2, q)
+
+    # ψ^n for negacyclic twist (use Python int to avoid uint32 overflow)
+    psi_powers = np.empty(N, dtype=np.uint32)
+    cur = 1
+    for i in range(N):
+        psi_powers[i] = cur
+        cur = (cur * psi) % q
+
+    # Stockham stage twiddles for cyclic NTT with ω = ψ²
+    twiddles = np.ones(N, dtype=np.uint32)
+    stages = N.bit_length() - 1
+
+    for s in range(stages):
+        span = 1 << s
+        stride = N // (2 * span)
+        step = pow(omega, stride, q)
+        cur = 1
+        for j in range(span):
+            twiddles[span + j] = cur
+            cur = (cur * step) % q
+
+    return psi_powers, twiddles
 
 
 # ---------------------------------------------------------------------------

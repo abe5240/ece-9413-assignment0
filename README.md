@@ -1,12 +1,26 @@
 # Assignment 0 — Negacyclic NTT in JAX
 
-Implement a **negacyclic** Number Theoretic Transform (NTT) in JAX.
-
-Your implementation goes in **`student.py`** — that's the only file you edit.
+In this assignment, you will implement a **negacyclic** Number Theoretic 
+Transform (NTT) in JAX and measure its performance. The goal is to keep 
+the code correct and push performance as far as you can.
 
 ---
 
-## What you are implementing
+## Useful links
+
+- [NTT Tutorial](https://eprint.iacr.org/2024/585.pdf)
+- [Montgomery Multiplication Tutorial](https://cp-algorithms.com/algebra/montgomery_multiplication.html)
+- [Fast GPU NTT #1](https://arxiv.org/pdf/2012.01968)
+- [Fast GPU NTT #2](https://arxiv.org/pdf/2407.13055)
+- [NYU HPC GPU Access](TODO)
+
+---
+
+## Algorithm specifics
+
+The NTT is the FFT, but for exact modular arithmetic instead of complex numbers.
+That makes it a core tool for fast polynomial multiplication, especially in
+cryptography. 
 
 The forward **negacyclic** NTT for polynomials modulo `x^N + 1`:
 
@@ -19,7 +33,43 @@ Where:
 * `q` is a prime modulus where `(q - 1)` is divisible by `2N`
 * `psi` is a primitive `2N`-th root of unity modulo `q`, so `psi^N ≡ -1 (mod q)`
 
-Your function must handle inputs shaped `(N,)` and `(B, N)` (batch dimension `B`).
+Your function must handle inputs shaped `(B, N)` (batch dimension `B`).
+`psi_powers` and `twiddles` are 1D tables of length `N` in the same domain as
+`mod_mul`. No auto-conversion is required or expected.
+
+You may use any correct NTT algorithm.
+
+Optional hook:
+`prepare_tables(q=..., psi_powers=..., twiddles=...)` can precompute or convert
+tables once. The benchmark calls this before timing, so its cost is excluded.
+
+---
+
+## What to do
+
+Your implementation goes in **`student.py`** — that's the only file you edit.
+
+- Implement `ntt` in `student.py`.
+- Implement `mod_add`, `mod_sub`, and `mod_mul` in `student.py`.
+- Keep the public API unchanged so tests and benchmarks still run.
+- Focus on speed. Correctness is required, but the goal is fast code.
+
+Your implementation will **not** need to be modified to switch between CPU
+and GPU backends. We suggest testing correctness _locally_. Once you have 
+a working version, then migrate over to a GPU to test and optimize performance.
+
+You are free to use any AI tools. AI can help, but you will likely need to
+understand and improve the output to reach top performance.
+
+---
+
+## Performance tips
+
+- Keep everything in JAX and JIT the hot path.
+- Precompute or convert tables once in `prepare_tables`.
+- Modular arithmetic using `%` may not be the fastest approach.
+- Use `uint32`/`uint64` carefully to avoid overflow and extra conversions.
+- You can even use Pallas or other JAX lowering tools for additional performance.
 
 ---
 
@@ -32,16 +82,21 @@ Install `uv` if you don't have it:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c `
+  "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 Then from this directory:
 
 ```bash
-uv sync
+bash scripts/setup.sh
 ```
 
-This installs CPU JAX. For GPU, see https://docs.jax.dev/en/latest/installation.html
+`scripts/setup.sh` installs CPU JAX by default. If an NVIDIA driver is present,
+it installs the matching CUDA wheels. It does not modify your shell.
+
+For GPU requirements, see:
+https://docs.jax.dev/en/latest/installation.html
 
 ---
 
@@ -75,21 +130,7 @@ uv run python -m tests.benchmark --bench            # only run benchmark
 ## Submission
 
 ```bash
-bash make_submission.sh
+bash scripts/make_submission.sh
 ```
 
 This runs tests and produces `code.zip`. Upload to Brightspace.
-
----
-
-## Helpers (optional)
-
-Generate your own `(q, psi)` pairs for experimentation:
-
-```python
-import provided
-
-N = 1 << 14
-q = provided.generate_ntt_modulus(N, bit_length=31)
-psi = provided.negacyclic_psi(N, q)
-```
