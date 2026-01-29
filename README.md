@@ -5,8 +5,8 @@ Transform (NTT) in JAX and measure its performance. The goal is to keep
 the code correct and push performance as far as you can.
 
 You are free (**and encouraged**) to use any AI tools, both for learning
-and optimizing your code. AI can certainly help, but you will likely need 
-to understand and improve the output to reach top performance.
+this algorithm and optimizing your code. AI will certainly help, but you 
+will likely need to understand and improve the output to reach top performance.
 
 ---
 
