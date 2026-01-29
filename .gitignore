@@ -4,3 +4,4 @@ __pycache__/
 .claude/
 uv.lock
 code.zip
+.DS_Store

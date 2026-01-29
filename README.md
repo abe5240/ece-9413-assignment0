@@ -4,6 +4,10 @@ In this assignment, you will implement a **negacyclic** Number Theoretic
 Transform (NTT) in JAX and measure its performance. The goal is to keep 
 the code correct and push performance as far as you can.
 
+You are free (**and encouraged**) to use any AI tools, both for learning
+and optimizing your code. AI can certainly help, but you will likely need 
+to understand and improve the output to reach top performance.
+
 ---
 
 ## Useful links
@@ -34,8 +38,10 @@ Where:
 * `psi` is a primitive `2N`-th root of unity modulo `q`, so `psi^N ≡ -1 (mod q)`
 
 Your function must handle inputs shaped `(B, N)` (batch dimension `B`).
-`psi_powers` and `twiddles` are 1D tables of length `N` in the same domain as
-`mod_mul`. No auto-conversion is required or expected.
+`psi_powers` and `twiddles` are inputs to your implementation. The tests pass
+the tables from `provided.precompute_tables`, but you can transform them once
+in `prepare_tables` or use your own layout internally. No auto-conversion is
+required or expected.
 
 You may use any correct NTT algorithm.
 
@@ -57,9 +63,6 @@ Your implementation goes in **`student.py`** — that's the only file you edit.
 Your implementation will **not** need to be modified to switch between CPU
 and GPU backends. We suggest testing correctness _locally_. Once you have 
 a working version, then migrate over to a GPU to test and optimize performance.
-
-You are free to use any AI tools. AI can help, but you will likely need to
-understand and improve the output to reach top performance.
 
 ---
 
