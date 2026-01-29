@@ -12,7 +12,7 @@ the code correct and push performance as far as you can.
 - [Montgomery Multiplication Tutorial](https://cp-algorithms.com/algebra/montgomery_multiplication.html)
 - [Fast GPU NTT #1](https://arxiv.org/pdf/2012.01968)
 - [Fast GPU NTT #2](https://arxiv.org/pdf/2407.13055)
-- [NYU HPC GPU Access](TODO)
+- NYU HPC GPU Access - TODO
 
 ---
 
